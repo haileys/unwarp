@@ -1,33 +1,10 @@
-class Quadratic {
-    static fromPoints(inflection, control) {
-        let q = new Quadratic();
-
-        q.inflectionPoint = inflection;
-        q.controlPoint = control;
-        q.calculateParameters();
-
-        return q;
+class ControlledQuadratic {
+    constructor(inflection, control) {
+        this.inflectionPoint = inflection;
+        this.controlPoint = control;
     }
 
-    static fromParameters(a, b, c) {
-        let q = new Quadratic();
-
-        q.a = a;
-        q.b = b;
-        q.c = c;
-
-        return q;
-    }
-
-    static average(quad1, quad2) {
-        return Quadratic.fromParameters(
-            (quad1.a + quad2.a) / 2,
-            (quad1.b + quad2.b) / 2,
-            (quad1.c + quad2.c) / 2
-        );
-    }
-
-    calculateParameters() {
+    toQuadratic() {
         let x1 = this.inflectionPoint.x;
         let y1 = this.inflectionPoint.y;
 
@@ -45,11 +22,29 @@ class Quadratic {
 
         // magic:
 
-        this.a = (x3 * (y2 - y1) + x2 * (y1 - y3) + x1 * (y3 - y2)) / div;
+        let a = (x3 * (y2 - y1) + x2 * (y1 - y3) + x1 * (y3 - y2)) / div;
 
-        this.b = (x3 * x3 * (y1 - y2) + x1 * x1 * (y2 - y3) + x2 * x2 * (y3 - y1)) / div;
+        let b = (x3 * x3 * (y1 - y2) + x1 * x1 * (y2 - y3) + x2 * x2 * (y3 - y1)) / div;
 
-        this.c = y1 - (this.a * x1 * x1 + this.b * x1);
+        let c = y1 - (a * x1 * x1 + b * x1);
+
+        return new Quadratic(a, b, c);
+    }
+}
+
+class Quadratic {
+    constructor(a, b, c) {
+        this.a = a;
+        this.b = b;
+        this.c = c;
+    }
+
+    static average(quad1, quad2) {
+        return new Quadratic(
+            (quad1.a + quad2.a) / 2,
+            (quad1.b + quad2.b) / 2,
+            (quad1.c + quad2.c) / 2
+        );
     }
 
     valueAtX(x) {
@@ -57,7 +52,7 @@ class Quadratic {
     }
 
     negate() {
-        return Quadratic.fromParameters(
+        return new Quadratic(
             -this.a,
             -this.b,
             -this.c
@@ -93,12 +88,12 @@ class QuadSelector {
         let inflectX = Math.floor(this.width * 0.5);
         let controlX = Math.floor(this.width * 0.75);
 
-        this.quad1 = Quadratic.fromPoints(
+        this.controlledQuad1 = new ControlledQuadratic(
             { x: inflectX, y: 100 },
             { x: controlX, y: 100 }
         );
 
-        this.quad2 = Quadratic.fromPoints(
+        this.controlledQuad2 = new ControlledQuadratic(
             { x: inflectX, y: this.height - 100 },
             { x: controlX, y: this.height - 100 }
         );
@@ -107,15 +102,30 @@ class QuadSelector {
     render() {
         this.canvasContext.clearRect(0, 0, this.width, this.height);
         this.canvasContext.putImageData(this.imageData, 0, 0);
-        this.drawQuad(this.quad1, "#ff0000");
-        this.drawQuad(this.quad2, "#00ff00");
+        this.drawControlledQuad(this.controlledQuad1, "#ff0000");
+        this.drawControlledQuad(this.controlledQuad2, "#00ff00");
         this.drawZeroline("#0000ff");
 
         this.drawQuad(this.unwarpQuad(), "#ff00ff");
     }
 
     unwarpQuad() {
-        return Quadratic.average(this.quad1, this.quad2);
+        return Quadratic.average(
+            this.controlledQuad1.toQuadratic(),
+            this.controlledQuad2.toQuadratic()
+        );
+    }
+
+    drawControlledQuad(controlledQuad, strokeStyle) {
+        this.drawQuad(controlledQuad.toQuadratic(), strokeStyle);
+
+        this.drawHandle(controlledQuad.controlPoint);
+        this.drawHandle(controlledQuad.inflectionPoint);
+
+        this.canvasContext.beginPath();
+        this.canvasContext.moveTo(controlledQuad.inflectionPoint.x, 0);
+        this.canvasContext.lineTo(controlledQuad.inflectionPoint.x, this.height);
+        this.canvasContext.stroke();
     }
 
     drawQuad(quad, strokeStyle) {
@@ -131,30 +141,13 @@ class QuadSelector {
         }
 
         this.canvasContext.stroke();
-
-        // these guards are kinda nasty and are a result of Quadratic having a
-        // weird dual-role (in that it represents ax^2 + bx + c curves as well
-        // as knowing how to derive a, b, and c from a control and inflection
-        // point)
-        if (quad.controlPoint) {
-            this.drawHandle(quad.controlPoint);
-        }
-
-        if (quad.inflectionPoint) {
-            this.drawHandle(quad.inflectionPoint);
-
-            this.canvasContext.beginPath();
-            this.canvasContext.moveTo(quad.inflectionPoint.x, 0);
-            this.canvasContext.lineTo(quad.inflectionPoint.x, this.height);
-            this.canvasContext.stroke();
-        }
     }
 
     zeroY() {
-        let a1 = this.quad1.a,
-            a2 = this.quad2.a,
-            y1 = this.quad1.controlPoint.y,
-            y2 = this.quad2.controlPoint.y;
+        let a1 = this.controlledQuad1.toQuadratic().a,
+            a2 = this.controlledQuad2.toQuadratic().a,
+            y1 = this.controlledQuad1.controlPoint.y,
+            y2 = this.controlledQuad2.controlPoint.y;
 
         return y1 + (y2 - y1) * (-a1 / (a2 - a1));
     }
@@ -195,10 +188,10 @@ class QuadSelector {
     }
 
     onMouseMove(ev) {
-        if (this.isMouseOnHandle(ev, this.quad1.inflectionPoint) ||
-            this.isMouseOnHandle(ev, this.quad1.controlPoint) ||
-            this.isMouseOnHandle(ev, this.quad2.inflectionPoint) ||
-            this.isMouseOnHandle(ev, this.quad2.controlPoint))
+        if (this.isMouseOnHandle(ev, this.controlledQuad1.inflectionPoint) ||
+            this.isMouseOnHandle(ev, this.controlledQuad1.controlPoint) ||
+            this.isMouseOnHandle(ev, this.controlledQuad2.inflectionPoint) ||
+            this.isMouseOnHandle(ev, this.controlledQuad2.controlPoint))
         {
             this.canvasElement.style.cursor = "move";
         } else {
@@ -208,16 +201,14 @@ class QuadSelector {
         if (this.selectedPoint) {
             this.selectedPoint.x = ev.offsetX * this.scalingFactor;
             this.selectedPoint.y = ev.offsetY * this.scalingFactor;
-            this.selectedQuad.calculateParameters();
             this.render();
         }
     }
 
     onMouseDown(ev) {
-        for (let quad of [this.quad1, this.quad2]) {
-            for (let point of [quad.inflectionPoint, quad.controlPoint]) {
+        for (let controlledQuad of [this.controlledQuad1, this.controlledQuad2]) {
+            for (let point of [controlledQuad.inflectionPoint, controlledQuad.controlPoint]) {
                 if (this.isMouseOnHandle(ev, point)) {
-                    this.selectedQuad = quad;
                     this.selectedPoint = point;
                 }
             }
@@ -225,7 +216,6 @@ class QuadSelector {
     }
 
     onMouseUp(ev) {
-        this.selectedQuad = null;
         this.selectedPoint = null;
     }
 
