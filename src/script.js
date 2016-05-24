@@ -50,14 +50,6 @@ class Quadratic {
     valueAtX(x) {
         return this.a * x * x + this.b * x + this.c;
     }
-
-    negate() {
-        return new Quadratic(
-            -this.a,
-            -this.b,
-            -this.c
-        );
-    }
 }
 
 class QuadSelector {
